@@ -321,7 +321,21 @@ void decode_ltc(LTCDecoder *d, ltcsnd_sample_t *sound, size_t size, ltc_off_t po
 
 			}
 
+#define SWITCH_FIX_SILENCE_LOGIC_BUG
+#ifdef SWITCH_FIX_SILENCE_LOGIC_BUG
+			// The original code pre 2/20/2025 had a bug that noise at line level values (128 +/- 2) could cause snd_to_biphase_period
+			// to be small, approximately 2.0, after which all valid periods, which for 25fps at 44100 are about 11 samples, would
+			// be interpreted as silence and would *not* update the period, perpetuating the interpretation that all remaining samples are silence.
+			//
+			// The fix is to strengthen the silence test by adding a comparison with "min_silence_num_samples_threshold".
+			// This constant must exceed max samples per period for 30fps @ 48kHz (the max period) = about 15 to avoid interpreting valid periods as silence.
+			// But to do its job of ensuring valid periods for 25fps @22050 (the min period) = about 5 are NOT silence, it must be less than 4 * 5 = 20, using 
+			// the "4 * period = silence" policy of original code.
+			static size_t const min_silence_num_samples_threshold = 16; 
+			if (d->snd_to_biphase_cnt > (d->snd_to_biphase_period * 4) && d->snd_to_biphase_cnt > min_silence_num_samples_threshold) {
+#else
 			if (d->snd_to_biphase_cnt > (d->snd_to_biphase_period * 4)) {
+#endif
 				/* "long" silence in between
 				 * -> reset parser, don't use it for phase-tracking
 				 */
